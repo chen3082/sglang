@@ -135,12 +135,23 @@ class TestDisallowedTokensLogitsProcessor(CustomTestCase):
         self.assertEqual(result[0, 4].item(), 1.0)
         self.assertTrue(torch.isinf(result[0, 3]) and result[0, 3] < 0)
 
-    def test_mismatched_params_raises(self):
-        """Test that mismatched token_ids across batch items raises AssertionError."""
+    def test_mixed_params_masked_per_row(self):
+        """Rows with different token_ids in one batch each mask only their own list."""
         logits = torch.zeros(2, 10)
         params = [{"token_ids": [1, 2]}, {"token_ids": [3, 4]}]
-        with self.assertRaises(AssertionError):
-            self.processor(logits, params)
+        result = self.processor(logits, params)
+        self.assertTrue(torch.isinf(result[0, [1, 2]]).all())
+        self.assertTrue(torch.isinf(result[1, [3, 4]]).all())
+        self.assertEqual(result[0, [3, 4]].tolist(), [0.0, 0.0])
+        self.assertEqual(result[1, [1, 2]].tolist(), [0.0, 0.0])
+
+    def test_empty_token_ids_row_unchanged(self):
+        """A row with an empty token_ids list is left untouched."""
+        logits = torch.zeros(2, 10)
+        params = [{"token_ids": []}, {"token_ids": [7]}]
+        result = self.processor(logits, params)
+        self.assertFalse(torch.isinf(result[0]).any())
+        self.assertTrue(torch.isinf(result[1, 7]))
 
 
 # ThinkingBudgetLogitProcessor (using Qwen3 variant)
